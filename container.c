@@ -6,6 +6,7 @@
 #include <stdlib.h> // required for system() and exit() functions
 #include <sys/wait.h> // required for wait_pid() function
 #include <unistd.h> // required for getpid() and sleep() functions
+#include <sys/mount.h>
 
 #define STACK_SIZE (1024 * 1024) // Stack size for cloned child
 static char child_stack[STACK_SIZE]; // Stack for child process
@@ -13,9 +14,15 @@ static char child_stack[STACK_SIZE]; // Stack for child process
 int child_main(void *arg) {
     printf("[Container] PID : %d\n", getpid());
     
-    if(sethostname("hasse-runtime", 13) != 0){
-        printf("Failed to set hostname\n");
-        return -1;
+    sethostname("hasse-runtime", 13);
+    if(mount("none", "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0){
+	perror("Failed to set mount propagation to private");
+	return -1;
+    }
+
+    if(mount("proc","/proc","proc",0,NULL) != 0){
+	perror("Failed to mount isolated /proc");
+	return -1;
     }
 
     system("/bin/bash");
@@ -26,7 +33,7 @@ int child_main(void *arg) {
 int main(){
     printf("[Host] PID : %d\n", getpid());
     //pid_t clone(int (*fn)(void *), void *stack, int flags, void *arg);
-    pid_t child_pid = clone(child_main, child_stack + STACK_SIZE, CLONE_NEWUTS | SIGCHLD, NULL);
+    pid_t child_pid = clone(child_main, child_stack + STACK_SIZE, CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWNS | SIGCHLD, NULL);
     if(child_pid == -1){
         printf("failed to clone. Are you running as root");
         return -1;
